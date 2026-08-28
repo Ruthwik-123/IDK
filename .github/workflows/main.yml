@@ -5,7 +5,7 @@ on:
     branches:
       - 'arena-agent**'
       - 'arena**'
-      - '*agent*'
+      - '**agent**'
 
 jobs:
   auto-merge:
@@ -26,7 +26,7 @@ jobs:
 
       - name: Merge Branch into Main
         run: |
-          SOURCE_BRANCH = "${GITHUB_REF#refs/heads/}"
+          SOURCE_BRANCH="${GITHUB_REF#refs/heads/}"
 
           if [ "$SOURCE_BRANCH" = "main" ]; then
             echo "Already on main branch, skipping."
