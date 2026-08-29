@@ -8,6 +8,7 @@ import { CHAPTERS } from '../content/sections'
  */
 export default function Overlay() {
   const offset = useScrollStore((s) => s.offset)
+  const setMode = useScrollStore((s) => s.setMode)
   // Chapter = the panel that contains the viewport's centre: with 5 panels
   // laid out over 4 intervals, panel i is centred on screen at offset
   // (i+0.5)/4, so the switch points are (i+0.5)/4 — i.e. floor(o·4 + 0.5).
@@ -85,11 +86,17 @@ export default function Overlay() {
           />
         </div>
 
-        <div className="mt-2 flex justify-between font-mono text-[10px] tracking-[0.25em] text-slate-500">
+        <div className="mt-2 flex items-center justify-between font-mono text-[10px] tracking-[0.25em] text-slate-500">
           <span>ANDAMAN SEA · BENGAL</span>
           <span>
             {String(chapter + 1).padStart(2, '0')} / {String(CHAPTERS.length).padStart(2, '0')}
           </span>
+          <button
+            onClick={() => setMode('bench')}
+            className="pointer-events-auto rounded-full border border-white/15 bg-black/30 px-3 py-1 font-mono text-[10px] tracking-[0.2em] text-slate-200 backdrop-blur-sm transition-colors hover:border-lava-400/60 hover:text-lava-300"
+          >
+            OPEN 3D BENCH →
+          </button>
         </div>
       </footer>
     </div>

@@ -1,7 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
-import { useScroll } from '@react-three/drei'
 import { smoothstep, fract } from '../lib/math'
 import { NOISE_GLSL } from '../lib/glsl'
 import { ISLAND } from '../lib/island'
@@ -16,6 +15,8 @@ import SmokePlume from './SmokePlume'
 import EmberSystem from './EmberSystem'
 import Interior from './Interior'
 import { Callout } from './Annotations'
+import useSafeScroll from '../lib/useSafeScroll'
+import { useScrollStore } from '../state/scrollStore'
 
 /* ------------------------------------------------------------------ */
 /* Lava lake — split into two half-discs so each crater keeps its lava */
@@ -63,6 +64,19 @@ const LAVA_FRAG =
 /* ------------------------------------------------------------------ */
 
 /**
+ * Radial lava-flow channel mask — 1 inside a valley, 0 on a ridge.
+ * Computed in JS for the vertex colours and mirrored in the rock shader
+ * (from position, via atan(z,x) and y/height) so the same channels glow
+ * during eruption. Shared formula keeps the cut halves in sync.
+ */
+function channelMask(theta, t) {
+  const ridge = Math.sin(theta * 9.0 + 1.2) * 0.55 + Math.sin(theta * 4.0 - 0.7) * 0.45
+  const channel = 1 - smoothstep(-0.1, 0.7, ridge)
+  const band = smoothstep(0.26, 0.5, t) * (1 - smoothstep(0.66, 0.84, t))
+  return channel * band
+}
+
+/**
  * One point on the (undivided) island surface at (theta, t):
  * layered angular noise, a flared coastline skirt, a carved crater.
  * Because both half-geometries sample this same function — and both
@@ -73,10 +87,19 @@ function ringPoint(theta, t, out) {
   const { baseRadius, height, craterFloor, craterRadius } = ISLAND
   const r0 = baseRadius * (1 - t)
 
+  // layered relief — a handful of sine-product octaves ≈ an fBm field, so
+  // the flanks look irregular instead of a lathed cone.
   const n1 = Math.sin(theta * 3.1 + 1.7) * Math.sin(t * 9.0 + theta * 2.0)
   const n2 = Math.sin(theta * 7.3 - 0.8) * Math.sin(t * 17.0 + theta * 1.1)
   const n3 = Math.sin(theta * 15.1 + 3.3) * Math.sin(t * 31.0)
-  const n = 0.55 * n1 + 0.3 * n2 + 0.15 * n3
+  const n4 = Math.sin(theta * 24.0 + 0.6) * Math.sin(t * 52.0 - theta * 1.7)
+  const n = 0.5 * n1 + 0.28 * n2 + 0.15 * n3 + 0.09 * n4
+
+  // radial gully/ridge system that chases up the flanks — the signature
+  // "spine and coulee" look of a stratovolcano. It also steers the glowing
+  // lava-flow channels in the rock shader.
+  const gulp = Math.sin(theta * 9.0 + 1.2) * 0.55 + Math.sin(theta * 4.0 - 0.7) * 0.45
+  const gullies = gulp * Math.sin(Math.min(t * 1.5, 1) * Math.PI)
 
   let x, y, z
   if (t < 0.14) {
@@ -88,14 +111,15 @@ function ringPoint(theta, t, out) {
     y = t * height * 0.6
   } else {
     // rocky relief, faded to zero near the apex so the crater stays clean
+    const fade = Math.min(1, r0 / 0.9)
     const relief =
       n *
       (0.45 + 1.1 * Math.sin(Math.min(t * 1.6, 1) * Math.PI)) *
-      Math.min(1, r0 / 0.9)
-    const R = r0 + relief
+      fade
+    const R = r0 + relief + gullies * 0.32 * fade
     x = Math.sin(theta) * R
     z = Math.cos(theta) * R
-    y = t * height + n * 0.3
+    y = t * height + n * 0.3 + Math.abs(gulp) * 0.16 * Math.sin(Math.min(t * 1.5, 1) * Math.PI)
   }
 
   // carve the crater: flatten everything above the floor inside the opening
@@ -113,16 +137,21 @@ const C_BASE = new THREE.Color('#1d2329')
 const C_MID = new THREE.Color('#39414a')
 const C_RIM = new THREE.Color('#5a6470')
 const C_FLOW = new THREE.Color('#4b3a33')
-const C_ASH = new THREE.Color('#8b9097')
+const C_LENS = new THREE.Color('#33251d') // darker, hotter coulee rock
+const C_ASHCAP = new THREE.Color('#8b9097')
 
 function rockColor(t, theta, i, out) {
   const hash = fract(Math.sin(i * 12.9898) * 43758.5453)
   out.copy(C_BASE).lerp(C_MID, smoothstep(0.05, 0.55, t))
-  out.lerp(C_RIM, smoothstep(0.55, 0.85, t) * 0.7)
+  out.lerp(C_RIM, smoothstep(0.55, 0.85, t) * 0.55)
   const flow = Math.sin(theta * 8.7 + 2.1) * Math.sin(theta * 3.3 + 0.4)
   if (t > 0.45 && t < 0.85 && flow > 0.55) out.lerp(C_FLOW, 0.45)
-  out.lerp(C_ASH, smoothstep(0.82, 0.98, t) * 0.8)
-  out.multiplyScalar(0.86 + 0.28 * hash)
+  // lava-flow channels sit lower, darker and warmer than the plain rock
+  const chan = channelMask(theta, t)
+  out.lerp(C_LENS, chan * 0.55)
+  // pale ash cap creeps down the upper flanks near the rim
+  out.lerp(C_ASHCAP, smoothstep(0.82, 0.98, t) * 0.8)
+  out.multiplyScalar(0.84 + 0.3 * hash)
   return out
 }
 
@@ -259,13 +288,13 @@ function buildHalfGeometry(side) {
  *                       interior (chamber, conduit, stratified caps);
  *                       <Html> callouts fade in with the opening
  */
-export default function Volcano() {
+export default function Volcano({ bench = false } = {}) {
   const island = useRef()
   const rightRef = useRef()
   const leftRef = useRef()
   const interior = useRef()
   const craterLight = useRef()
-  const scroll = useScroll()
+  const scroll = useSafeScroll()
 
   // per-frame animation state — lives outside React, never re-renders
   const anim = useRef({ rot: 0, split: 0, eruption: 0, flash: 0, lastE: 0 })
@@ -303,25 +332,44 @@ export default function Volcano() {
       roughness: 0.93,
       metalness: 0.05,
     })
+
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.uEruption = eruptionU.current.uEruption
       shader.uniforms.uFlicker = eruptionU.current.uFlicker
+
+      // ISLAND.height = 9 — keep in sync. The rim mask (ember) plus the
+      // flow mask mirror the JS channelMask() so the coulees that run down
+      // the flanks match the darker rock tint painted in rockColor() and
+      // only glow while the eruption is live. Real newlines via template
+      // literals — a literal "\\n" would be invalid GLSL.
+      const VERT_COMMON = `#include <common>
+\tvarying float vEmberMask;
+\tvarying float vFlowMask;`
+
+      const VERT_BEGIN = `#include <begin_vertex>
+\tvEmberMask = smoothstep(0.70, 0.80, position.y / 9.0);
+\tfloat vThet = atan(position.z, position.x);
+\tfloat vRidge = sin(vThet * 9.0 + 1.2) * 0.55 + sin(vThet * 4.0 - 0.7) * 0.45;
+\tfloat vChan = 1.0 - smoothstep(-0.1, 0.7, vRidge);
+\tfloat vBand = smoothstep(0.26, 0.5, position.y / 9.0) * (1.0 - smoothstep(0.66, 0.84, position.y / 9.0));
+\tvFlowMask = vChan * vBand;`
+
+      const FRAG_COMMON = `#include <common>
+\tvarying float vEmberMask;
+\tvarying float vFlowMask;
+\tuniform float uEruption;
+\tuniform float uFlicker;`
+
+      const FRAG_EMISSIVE = `#include <emissivemap_fragment>
+\ttotalEmissiveRadiance += vec3(1.0, 0.42, 0.10) * vEmberMask * uEruption * uFlicker;
+\ttotalEmissiveRadiance += vec3(1.0, 0.46, 0.14) * vFlowMask * uEruption * (0.55 + 0.45 * uFlicker) * 0.5;`
+
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\n\tvarying float vEmberMask;')
-        .replace(
-          '#include <begin_vertex>',
-          // ISLAND.height = 9 — keep in sync
-          '#include <begin_vertex>\n\tvEmberMask = smoothstep(0.70, 0.80, position.y / 9.0);',
-        )
+        .replace('#include <common>', VERT_COMMON)
+        .replace('#include <begin_vertex>', VERT_BEGIN)
       shader.fragmentShader = shader.fragmentShader
-        .replace(
-          '#include <common>',
-          '#include <common>\n\tvarying float vEmberMask;\n\tuniform float uEruption;\n\tuniform float uFlicker;',
-        )
-        .replace(
-          '#include <emissivemap_fragment>',
-          '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += vec3(1.0, 0.42, 0.10) * vEmberMask * uEruption * uFlicker;',
-        )
+        .replace('#include <common>', FRAG_COMMON)
+        .replace('#include <emissivemap_fragment>', FRAG_EMISSIVE)
     }
     return mat
   }, [])
@@ -329,7 +377,9 @@ export default function Volcano() {
   useFrame((state, delta) => {
     const s = anim.current
     const t = state.clock.elapsedTime
-    const offset = scroll.offset
+    // Bench mode: force the eruption on (and let the user control the slice);
+    // otherwise follow the scroll film.
+    const offset = bench ? 1 : scroll.offset
 
     /* ── milestone 1 · rotation ─────────────────────────────────── */
     s.rot = THREE.MathUtils.damp(s.rot, offset * ROTATION_TOTAL, 3.5, delta)
@@ -351,14 +401,15 @@ export default function Volcano() {
     craterLight.current.intensity = (1.4 + 9 * s.eruption) * flicker + s.flash * 6
 
     /* ── milestone 3 · cross-section @ 80% ──────────────────────── */
-    s.split = THREE.MathUtils.damp(s.split, splitTargetAt(offset), 2.2, delta)
+    const splitTarget = bench ? (useScrollStore.getState().slice ? 1 : 0) : splitTargetAt(offset)
+    s.split = THREE.MathUtils.damp(s.split, splitTarget, 2.2, delta)
     rightRef.current.position.x = SPLIT_DISTANCE * s.split
     leftRef.current.position.x = -SPLIT_DISTANCE * s.split
     interior.current.visible = s.split > 0.02
 
     // callouts fade in as the rock opens (opacity is a ref — no re-renders)
     annRef.current = annotationAt(offset)
-    const on = offset > 0.78
+    const on = s.split > 0.2
     calloutsOnRef.current = on
     if (on !== calloutsOn) setCalloutsOn(on)
   })

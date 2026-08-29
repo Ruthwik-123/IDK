@@ -1,7 +1,12 @@
 # Barren Island — Scroll-Driven 3D Presentation
 
 A cinematic, scroll-driven 3D story of **Barren Island** — India's only active
-volcano — built for an SST presentation.
+volcano — built as an **SST presentation that is an experience, not slides**. It
+follows the "product story" pattern of the reference repo: short, punchy story
+beats (label → headline → one line), a clean **spec-sheet appendix** for the
+15 points (so the exam facts are honest and on the record), and a **free-orbit
+3D bench** — drag to orbit, scroll to zoom, turn it over, slice it open. Print
+the study card in [`PRESENTATION.md`](./PRESENTATION.md).
 
 Stack: **Vite · React 19 · @react-three/fiber · @react-three/drei · Tailwind CSS v4**
 
@@ -28,9 +33,10 @@ src/
 │   ├── scroll.js               # THE choreography: milestone curves + split distance
 │   └── glsl.js                 # shared fBm noise chunk (lava / chamber shaders)
 └── components/
-    ├── Scene.jsx               # 3D world: bg, fog, stars, lights, island, ocean
+    ├── Scene.jsx               # 3D world: bg, fog, stars, lights, island, ocean; bench variant
     ├── Sections.jsx            # DOM story panels (<Scroll html>) — scroll-synced
-    ├── Overlay.jsx             # HUD: title, chapter rail, progress bar, hint
+    ├── Overlay.jsx             # HUD (film): title, chapter rail, progress, "Open 3D bench"
+    ├── BenchOverlay.jsx        # HUD (bench): title, instructions, slice toggle, back
     ├── CameraRig.jsx           # Scroll-driven dolly (2 CatmullRom splines + parallax)
     ├── Lighting.jsx            # Cinematic key / rim / hemisphere rig + shadows
     ├── IslandEnvironment.jsx   # Procedural IBL via Lightformers (offline-safe)
@@ -41,6 +47,21 @@ src/
     ├── Interior.jsx            # Milestone 3 — magma chamber + conduit pipe
     └── Annotations.jsx         # Milestone 3 — drei <Html> structural callouts
 ```
+
+### Two modes (state/scrollStore.js)
+
+The app is either a **film** or a **bench**. `useScrollStore.mode` flips between
+them; the bench hands the camera to the user.
+
+- **Film** — `<ScrollControls pages={5}>` drives a directed cut: story camera
+  spline (`CameraRig`), the three volcano milestones, and DOM story panels
+  (`Sections`).
+- **Bench** — no scroll film. `<OrbitControls>` replaces the camera rig; the
+  volcano is forced into **eruption** and, via the "slice" toggle, splits open
+  so you can orbit into the cutaway. The scroll-dependent components read
+  `useSafeScroll()`, which falls back to a neutral offset outside
+  `<ScrollControls>` — so the volcano, embers, smoke and interior all work in
+  both modes.
 
 ### Data flow — one source of scroll truth
 
@@ -112,6 +133,18 @@ choreography — retune the story by editing that single file.
 ## Verified facts used in the copy
 
 Source: Smithsonian Global Volcanism Program (Barren Island, vn 260010) and
-corresponding field reports. First recorded eruption 1787; ~2 km caldera in a
-~3 km island; 354 m highest point; ~135 km NE of Port Blair; volcano rises
-from ~2,250 m depth; 20 eruptions since 1900; last recorded episode 2024.
+field reports. First recorded eruption 1787; ~2 km caldera in a ~3 km island;
+354 m highest point; ~135 km NE of Port Blair; volcano rises from ~2,250 m
+depth; **Composite/stratovolcano · caldera · pyroclastic cone**; **Active**
+(not dormant/extinct); reawakened 1991 after ~150 years dormancy; mostly
+VEI 1–2 events, 20+ since 1900; most recent confirmed episode **30 Jul 2025 –
+Jan 2026** (a large event **15 Mar – 29 May 2024**); 12.28°N 93.86°E.
+
+### The 15 points (4 main + 11 sub)
+
+| Q | Main point (numbered) | Sub-points |
+|---|-----------------------|------------|
+| 1 — only volcano | **01** Barren Island, only active volcano in India | 02 location & coords · 03 only one on Sumatra–Myanmar arc · 04 uninhabited, 354 m |
+| 2 — define & surroundings | **05** a vent where magma/ash/gas erupt; a stratovolcano in a caldera | 06 island ~3 km, walls 250–350 m · 07 caldera ~2 km, breached west · 08 rises ~2,250 m, basalt/andesite |
+| 3 — last eruption & why | **09** latest 2025–26; big 2024 event | 10 why: subduction · 11 why: chamber + gas · 12 what: VEI 1–2, 20+ since 1900 |
+| 4 — type | **13** COMPOSITE; ACTIVE | 14 layered lava/ash + late-Pleistocene caldera · 15 active — reawoke 1991 |

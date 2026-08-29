@@ -1,9 +1,9 @@
 import { forwardRef, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
-import { useScroll } from '@react-three/drei'
 import { NOISE_GLSL } from '../lib/glsl'
 import { eruptionAt } from '../lib/scroll'
+import useSafeScroll from '../lib/useSafeScroll'
 
 /**
  * The revealed interior — visible only while the cross-section is open
@@ -90,7 +90,7 @@ const CONDUIT_FRAG = /* glsl */ `
 
 const Interior = forwardRef(function Interior(_props, ref) {
   const light = useRef()
-  const scroll = useScroll()
+  const scroll = useSafeScroll()
 
   const chamberMat = useMemo(
     () =>
