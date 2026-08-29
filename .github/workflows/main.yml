@@ -34,6 +34,8 @@ jobs:
           fi
 
           git fetch origin main
+          git fetch origin "$SOURCE_BRANCH"
+          
           git checkout main
           git pull origin main
 
