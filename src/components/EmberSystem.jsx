@@ -1,8 +1,8 @@
 import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
-import { useScroll } from '@react-three/drei'
 import { eruptionAt } from '../lib/scroll'
+import useSafeScroll from '../lib/useSafeScroll'
 import { ISLAND } from '../lib/island'
 
 const COUNT = 300
@@ -59,7 +59,7 @@ const FRAG = /* glsl */ `
 
 export default function EmberSystem() {
   const mat = useRef()
-  const scroll = useScroll()
+  const scroll = useSafeScroll()
 
   const { positions, vels, lives, seeds } = useMemo(() => {
     const positions = new Float32Array(COUNT * 3)

@@ -1,7 +1,7 @@
 import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
-import { useScroll } from '@react-three/drei'
+import useSafeScroll from '../lib/useSafeScroll'
 
 const lookTarget = new THREE.Vector3()
 
@@ -14,7 +14,7 @@ const lookTarget = new THREE.Vector3()
  * re-blocks; nothing else in the scene needs to know.
  */
 export default function CameraRig() {
-  const scroll = useScroll()
+  const scroll = useSafeScroll()
   const p = useRef({ t: 0, px: 0, py: 0 })
 
   const camPath = useMemo(

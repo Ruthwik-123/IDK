@@ -1,8 +1,8 @@
 import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
-import { useScroll } from '@react-three/drei'
 import { eruptionAt } from '../lib/scroll'
+import useSafeScroll from '../lib/useSafeScroll'
 import { ISLAND } from '../lib/island'
 
 const COUNT = 320
@@ -52,7 +52,7 @@ const FRAG = /* glsl */ `
 `
 
 export default function SmokePlume() {
-  const scroll = useScroll()
+  const scroll = useSafeScroll()
   const mat = useRef()
 
   const { positions, seeds, offsets } = useMemo(() => {
